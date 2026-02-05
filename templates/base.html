@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SurfLog</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+        }
+
+        header {
+            padding: 10px 16px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 50px);
+        }
+
+        aside {
+            width: 240px;
+            border-right: 1px solid #ddd;
+            padding: 12px;
+            overflow-y: auto;
+        }
+
+        main {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .year {
+            font-weight: bold;
+            margin-top: 12px;
+        }
+
+        .month {
+            margin-left: 12px;
+            font-size: 0.95em;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="/">Home</a> |
+    <a href="/spots">Surf Spots</a>  |
+    <a href="/logs">Journal</a> |
+    <a href="/logs/new">Add log</a> |
+</header>
+
+<div class="container">
+    <aside>
+        {% block sidebar %}
+        <!-- journal navigation goes here -->
+        {% endblock %}
+    </aside>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

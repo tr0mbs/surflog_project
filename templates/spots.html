@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Surf Spots</h1>
+
+<ul>
+    {% for spot in spots %}
+        <li>
+            <strong>{{ spot.name }}</strong>
+            {% if spot.location %}
+                – {{ spot.location }}
+            {% endif %}
+        </li>
+    {% endfor %}
+</ul>
+{% endblock %}

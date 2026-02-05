@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>New Surf Log</h1>
+
+<form method="post">
+    <label for="session_date">Session date:</label>
+    <input id="session_date" type="date" name="session_date" required>
+    <br><br>
+
+    <label for="spot_id">Spot:</label>
+    <select id="spot_id" name="spot_id" required>
+        {% for spot in spots %}
+            <option value="{{ spot.id }}">{{ spot.name }}</option>
+        {% endfor %}
+    </select>
+    <br><br>
+
+    <label for="group_id">Group:</label>
+    <select id="group_id" name="group_id" required>
+        {% for group in groups %}
+            <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endfor %}
+    </select>
+    <br><br>
+
+    <label for="author_name">Author:</label>
+    <input id="author_name" type="text" name="author_name" placeholder="Your name (optional)">
+    <br><br>
+
+    <input type="hidden" name="author_hint" id="author_hint">
+
+    <label for="notes">Notes:</label>
+    <br>
+    <textarea id="notes" name="notes" rows="5" cols="40"></textarea>
+    <br><br>
+
+    <button type="submit">Save log</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- Author name persistence ---
+    // Save author name in localStorage for convenience
+    const authorInput = document.querySelector('input[name="author_name"]');
+
+    // Load saved author name
+    const savedAuthorName = localStorage.getItem("author_name");
+    if (savedAuthorName && authorInput && !authorInput.value) {
+        authorInput.value = savedAuthorName;
+    }
+
+    // Save on change
+    if (authorInput) {
+        authorInput.addEventListener("change", () => {
+            localStorage.setItem("author_name", authorInput.value);
+        });
+    }
+
+    // --- Author fingerprint (identity hint) ---
+    if (!localStorage.getItem("author_fingerprint")) {
+    localStorage.setItem(
+        "author_fingerprint",
+        crypto.randomUUID()
+    );
+    }  
+
+    // Set hidden fingerprint field
+    const hintField = document.getElementById("author_hint");
+    const fingerprint = localStorage.getItem("author_fingerprint");
+    if (hintField && fingerprint) {
+        hintField.value = fingerprint;
+    }
+</script>
+{% endblock %}
