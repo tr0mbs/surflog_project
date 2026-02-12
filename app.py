@@ -1,6 +1,13 @@
 from flask import Flask, jsonify, render_template, request, redirect, url_for, abort
+import requests
 import sqlite3
 import uuid
+from datetime import date, datetime
+from zoneinfo import ZoneInfo  # Python 3.9+
+from typing import Optional
+import openmeteo_requests
+import requests_cache
+from retry_requests import retry
 
 app = Flask(__name__)
 DB_PATH = "surflog.db"
@@ -17,6 +24,132 @@ def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # allows dict-like access
     return conn
+
+
+# Utility function to compute how many full calendar days ago a date was
+def compute_past_days(selected_date: date, today: Optional[date] = None) -> int:
+    
+    if today is None:
+        today = date.today()
+
+    delta = today - selected_date
+
+    if delta.days < 0:
+        raise ValueError("Selected date cannot be in the future.")
+
+    return delta.days
+
+
+# Setup Open-Meteo client with caching and retry
+cache_session = requests_cache.CachedSession(".cache", expire_after=3600)
+retry_session = retry(cache_session, retries=3, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+def get_surf_day(lat: float, lon: float, selected_date):
+    """
+    Fetches marine + weather data for one calendar day.
+    Returns a list of 24 structured hourly dictionaries.
+    """
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    past_days = compute_past_days(selected_date)
+
+    tz = ZoneInfo("Europe/Berlin")
+
+    # ---- Marine API ----
+    marine_url = "https://marine-api.open-meteo.com/v1/marine"
+
+    marine_params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": [
+            "wave_height",
+            "wave_period",
+            "wave_direction",
+            "swell_wave_height",
+            "swell_wave_period",
+            "swell_wave_direction",
+            "sea_level_height_msl",
+        ],
+        "timezone": "Europe/Berlin",
+        "past_days": past_days,
+        "forecast_days": 1,
+    }
+
+    marine_response = openmeteo.weather_api(marine_url, params=marine_params)[0]
+    marine_hourly = marine_response.Hourly()
+
+    marine_start = marine_hourly.Time()
+    interval = marine_hourly.Interval()
+
+    wave_height = marine_hourly.Variables(0).ValuesAsNumpy()
+    wave_period = marine_hourly.Variables(1).ValuesAsNumpy()
+    wave_direction = marine_hourly.Variables(2).ValuesAsNumpy()
+    swell_height = marine_hourly.Variables(3).ValuesAsNumpy()
+    swell_period = marine_hourly.Variables(4).ValuesAsNumpy()
+    swell_direction = marine_hourly.Variables(5).ValuesAsNumpy()
+    tide_height = marine_hourly.Variables(6).ValuesAsNumpy()
+
+    # ---- Weather API ----
+    weather_url = "https://api.open-meteo.com/v1/forecast"
+
+    weather_params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": [
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "wind_gusts_10m",
+            "temperature_2m",
+        ],
+        "timezone": "Europe/Berlin",
+        "past_days": past_days,
+        "forecast_days": 1,
+    }
+
+    weather_response = openmeteo.weather_api(weather_url, params=weather_params)[0]
+    weather_hourly = weather_response.Hourly()
+
+    wind_speed = weather_hourly.Variables(0).ValuesAsNumpy()
+    wind_direction = weather_hourly.Variables(1).ValuesAsNumpy()
+    wind_gusts = weather_hourly.Variables(2).ValuesAsNumpy()
+    temperature = weather_hourly.Variables(3).ValuesAsNumpy()
+
+    # ---- Merge 24 Hours ----
+    result = []
+
+    for i in range(24):
+        ts = marine_start + i * interval
+        dt = datetime.fromtimestamp(ts, tz)
+
+        result.append({
+            "observed_at": dt.isoformat(),
+
+            # Wave
+            "wave_height": float(wave_height[i]),
+            "wave_period": float(wave_period[i]),
+            "wave_direction": float(wave_direction[i]),
+
+            # Swell
+            "swell_height": float(swell_height[i]),
+            "swell_period": float(swell_period[i]),
+            "swell_direction": float(swell_direction[i]),
+
+            # Wind
+            "wind_speed": float(wind_speed[i]),
+            "wind_direction": float(wind_direction[i]),
+            "wind_gusts": float(wind_gusts[i]),
+
+            # Tide
+            "tide_height": float(tide_height[i]),
+
+            # Weather
+            "temperature": float(temperature[i]),
+        })
+
+    return result
 
 
 # Endpoint to get all groups, i.e. Queries the DB, Converts rows into dictionaries, Returns JSON (easy to inspect in browser)
@@ -69,9 +202,14 @@ def logs():
                 wave_height,
                 wave_period,
                 wave_direction,
+                swell_height,
+                swell_period,
+                swell_direction,
                 wind_speed,
                 wind_direction,
-                tide_height
+                wind_gusts,
+                tide_height,
+                temperature
             FROM surf_conditions
             WHERE log_id = ?
             ORDER BY observed_at
@@ -115,6 +253,15 @@ def new_log():
             # Server-generated fallback
             author_id = f"legacy_{uuid.uuid4().hex}"
 
+        # Fetch spot coordinates
+        spot = conn.execute(
+            "SELECT latitude, longitude FROM surf_spots WHERE id = ?",
+            (int(spot_id),)
+        ).fetchone()
+        if not spot:
+            conn.close()
+            abort(400, "Invalid surf spot")
+
         # Basic validation
         if not session_date or not spot_id or not group_id:
             conn.close()
@@ -150,6 +297,66 @@ def new_log():
             conn.rollback()
             conn.close()
             raise e
+        
+        try:
+            selected_date = date.fromisoformat(session_date)
+
+            surf_data = get_surf_day(
+                lat=spot["latitude"],
+                lon=spot["longitude"],
+                selected_date=selected_date
+            )
+
+            for hour in surf_data:
+                data = hour.copy()
+                data["log_id"] = log_id
+
+                # Optional rounding
+                for key in data:
+                    if isinstance(data[key], float):
+                        data[key] = round(data[key], 2)
+
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO surf_conditions (
+                        log_id,
+                        observed_at,
+                        wave_height,
+                        wave_period,
+                        wave_direction,
+                        swell_height,
+                        swell_period,
+                        swell_direction,
+                        wind_speed,
+                        wind_direction,
+                        wind_gusts,
+                        tide_height,
+                        temperature
+                    )
+                    VALUES (
+                        :log_id,
+                        :observed_at,
+                        :wave_height,
+                        :wave_period,
+                        :wave_direction,
+                        :swell_height,
+                        :swell_period,
+                        :swell_direction,
+                        :wind_speed,
+                        :wind_direction,
+                        :wind_gusts,
+                        :tide_height,
+                        :temperature
+                    )
+                    """,
+                    data
+                )
+
+            conn.commit()
+
+        except Exception as e:
+            conn.rollback()
+            print("Open-Meteo fetch failed:", e)
 
         conn.close()
         return redirect(url_for("logs"))
