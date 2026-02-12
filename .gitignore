@@ -1,4 +1,16 @@
-venv/
+# Virtual environment
+.venv/
+
+# Python cache
 __pycache__/
 *.pyc
+
+# SQLite database
 surflog.db
+
+# Open-Meteo cache
+.cache/
+.cache.sqlite
+
+# Local test scripts
+test_*.py
