@@ -43,6 +43,25 @@ def init_db() -> None:
     try:
         conn.executescript(schema_sql)
         ensure_surf_logs_columns(conn)
+
+        required_tables = {"groups", "surf_spots", "surf_logs", "surf_conditions"}
+        existing_tables = {
+            row[0]
+            for row in conn.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                """
+            ).fetchall()
+        }
+
+        missing = sorted(required_tables - existing_tables)
+        if missing:
+            raise RuntimeError(
+                f"Database initialization failed, missing tables: {', '.join(missing)}"
+            )
+
         conn.commit()
     finally:
         conn.close()
