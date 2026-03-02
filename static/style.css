@@ -871,6 +871,37 @@ button:hover {
     font-weight: 700;
 }
 
+.error-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-soft);
+    padding: 1.15rem;
+    max-width: 760px;
+}
+
+.error-panel h1 {
+    font-size: clamp(1.35rem, 1.6vw + 1rem, 1.8rem);
+    margin-bottom: 0.5rem;
+}
+
+.error-panel p {
+    margin: 0;
+    color: var(--notes-text);
+    line-height: 1.5;
+}
+
+.error-hint {
+    margin-top: 0.35rem;
+    color: var(--muted);
+}
+
+.error-actions {
+    margin-top: 0.85rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 @media (prefers-color-scheme: dark) {
     :root {
         --bg: #0d1317;

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="error-panel">
+    <h1>{{ title or "Error" }}</h1>
+    <p>{{ message or "Something went wrong while loading the page." }}</p>
+    {% if hint %}
+        <p class="error-hint">{{ hint }}</p>
+    {% endif %}
+    <div class="error-actions">
+        <a class="btn-pill primary" href="/">Back to Home</a>
+        <a class="btn-pill" href="/journal">Open Journal</a>
+    </div>
+</section>
+{% endblock %}

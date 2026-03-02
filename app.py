@@ -2,18 +2,21 @@ from flask import Flask, jsonify, render_template, request, redirect, url_for, a
 import calendar
 import math
 import os
-import requests
 import sqlite3
 import uuid
 from datetime import date, datetime
 from zoneinfo import ZoneInfo  # Python 3.9+
 from typing import Optional
+from werkzeug.exceptions import HTTPException
 import openmeteo_requests
 import requests_cache
 from retry_requests import retry
 
 app = Flask(__name__)
 DB_PATH = os.getenv("SURFLOG_DB_PATH", "surflog.db")
+APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Europe/Copenhagen")
+OPENMETEO_CACHE_SECONDS = int(os.getenv("OPENMETEO_CACHE_SECONDS", "3600"))
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 
 # Ensure surf_logs has the extra fields used by the UI
@@ -57,6 +60,31 @@ def index():
     return render_template("index.html")
 
 
+@app.errorhandler(sqlite3.OperationalError)
+def handle_database_error(error):
+    app.logger.exception("Database operational error: %s", error)
+    return render_template(
+        "error.html",
+        title="Database Error",
+        message="A database issue occurred while loading this page.",
+        hint="Please refresh and try again in a moment."
+    ), 500
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    if isinstance(error, HTTPException):
+        return error
+
+    app.logger.exception("Unexpected application error: %s", error)
+    return render_template(
+        "error.html",
+        title="Something Went Wrong",
+        message="An unexpected error occurred.",
+        hint="Please try again. If the issue continues, check the server logs."
+    ), 500
+
+
 # Setup database connection
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -87,7 +115,10 @@ def parse_15_min_time(value: str) -> datetime:
 
 
 # Setup Open-Meteo client with caching and retry
-cache_session = requests_cache.CachedSession(".cache", expire_after=3600)
+cache_session = requests_cache.CachedSession(
+    ".cache",
+    expire_after=OPENMETEO_CACHE_SECONDS
+)
 retry_session = retry(cache_session, retries=3, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
@@ -97,12 +128,9 @@ def get_surf_day(lat: float, lon: float, selected_date):
     Returns a list of 24 structured hourly dictionaries.
     """
 
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
     past_days = compute_past_days(selected_date)
 
-    tz = ZoneInfo("Europe/Berlin")
+    tz = ZoneInfo(APP_TIMEZONE)
 
     # ---- Marine API ----
     marine_url = "https://marine-api.open-meteo.com/v1/marine"
@@ -119,7 +147,7 @@ def get_surf_day(lat: float, lon: float, selected_date):
             "swell_wave_direction",
             "sea_level_height_msl",
         ],
-        "timezone": "Europe/Berlin",
+        "timezone": APP_TIMEZONE,
         "past_days": past_days,
         "forecast_days": 1,
     }
@@ -150,7 +178,7 @@ def get_surf_day(lat: float, lon: float, selected_date):
             "wind_gusts_10m",
             "temperature_2m",
         ],
-        "timezone": "Europe/Berlin",
+        "timezone": APP_TIMEZONE,
         "past_days": past_days,
         "forecast_days": 1,
     }
@@ -637,6 +665,7 @@ def journal():
         })
 
     return render_template("journal.html", journal_tree=journal_tree)
+
 
 # Run the Flask app
 if __name__ == "__main__":
