@@ -6,12 +6,6 @@
 <div class="year">2025</div>
 
 <div class="year">2024</div>
-<div class="month">December</div>
-<div class="month">November</div>
-<div class="month">June</div>
-<div class="month">May</div>
-<div class="month">April</div>
-<div class="month">January</div>
 
 <div class="year">2023</div>
 {% endblock %}
@@ -23,6 +17,16 @@
     <article>
         <h3>{{ entry.log.session_date }} – {{ entry.log.spot_name }}</h3>
         <p><em>{{ entry.log.group_name }}</em></p>
+        <p>
+            {% if entry.log.session_start_time and entry.log.session_end_time %}
+                {{ entry.log.session_start_time }}-{{ entry.log.session_end_time }}
+            {% else %}
+                Time n/a
+            {% endif %}
+            {% if entry.log.session_rating is not none %}
+                · {{ "%.1f"|format(entry.log.session_rating) }}/5
+            {% endif %}
+        </p>
         <p>{{ entry.log.notes }}</p>
         <hr>
     </article>

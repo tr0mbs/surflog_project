@@ -2,64 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SurfLog</title>
-    <style>
-        body {
-            margin: 0;
-            font-family: sans-serif;
-        }
-
-        header {
-            padding: 10px 16px;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .container {
-            display: flex;
-            height: calc(100vh - 50px);
-        }
-
-        aside {
-            width: 240px;
-            border-right: 1px solid #ddd;
-            padding: 12px;
-            overflow-y: auto;
-        }
-
-        main {
-            flex: 1;
-            padding: 16px;
-            overflow-y: auto;
-        }
-
-        .year {
-            font-weight: bold;
-            margin-top: 12px;
-        }
-
-        .month {
-            margin-left: 12px;
-            font-size: 0.95em;
-        }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-<header>
-    <a href="/">Home</a> |
-    <a href="/spots">Surf Spots</a>  |
-    <a href="/logs">Journal</a> |
-    <a href="/logs/new">Add log</a> |
+<header class="app-header">
+    <a class="brand" href="/">SurfLog</a>
+    <nav class="main-nav" aria-label="Main navigation">
+        <a href="/">Home</a>
+        <a href="/spots">Surf Spots</a>
+        <a href="/logs">All Logs</a>
+        <a href="/logs/new">New Log</a>
+        <a href="/journal">Journal</a>
+    </nav>
 </header>
 
-<div class="container">
-    <aside>
-        {% block sidebar %}
-        <!-- journal navigation goes here -->
-        {% endblock %}
+<div class="page-shell">
+    <aside class="page-sidebar">
+        {% block sidebar %}{% endblock %}
     </aside>
 
-    <main>
+    <main class="page-main">
         {% block content %}{% endblock %}
     </main>
 </div>

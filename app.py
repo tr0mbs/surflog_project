@@ -1,4 +1,6 @@
 from flask import Flask, jsonify, render_template, request, redirect, url_for, abort
+import calendar
+import math
 import requests
 import sqlite3
 import uuid
@@ -11,6 +13,41 @@ from retry_requests import retry
 
 app = Flask(__name__)
 DB_PATH = "surflog.db"
+
+
+# Ensure surf_logs has the extra fields used by the UI
+def ensure_database_schema():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        table_exists = conn.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'surf_logs'
+            """
+        ).fetchone()
+
+        if not table_exists:
+            return
+
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(surf_logs)").fetchall()
+        }
+
+        if "session_rating" not in columns:
+            conn.execute("ALTER TABLE surf_logs ADD COLUMN session_rating REAL")
+        if "session_start_time" not in columns:
+            conn.execute("ALTER TABLE surf_logs ADD COLUMN session_start_time TEXT")
+        if "session_end_time" not in columns:
+            conn.execute("ALTER TABLE surf_logs ADD COLUMN session_end_time TEXT")
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
+ensure_database_schema()
 
 
 # Home route to serve the main page
@@ -38,6 +75,13 @@ def compute_past_days(selected_date: date, today: Optional[date] = None) -> int:
         raise ValueError("Selected date cannot be in the future.")
 
     return delta.days
+
+
+def parse_15_min_time(value: str) -> datetime:
+    parsed = datetime.strptime(value, "%H:%M")
+    if parsed.minute % 15 != 0:
+        raise ValueError("Time must use 15 minute increments.")
+    return parsed
 
 
 # Setup Open-Meteo client with caching and retry
@@ -185,6 +229,9 @@ def logs():
             surf_logs.session_date,
             surf_logs.notes,
             surf_logs.author_name,
+            surf_logs.session_rating,
+            surf_logs.session_start_time,
+            surf_logs.session_end_time,
             groups.name AS group_name,
             surf_spots.name AS spot_name
         FROM surf_logs
@@ -215,8 +262,12 @@ def logs():
             ORDER BY observed_at
         """, (log["id"],)).fetchall()
 
+        log_dict = dict(log)
+        if log_dict["session_rating"] is not None:
+            log_dict["session_rating"] = float(log_dict["session_rating"])
+
         logs_with_conditions.append({
-            "log": dict(log),
+            "log": log_dict,
             "conditions": [dict(c) for c in conditions]
         })
 
@@ -239,6 +290,9 @@ def new_log():
         group_id = request.form.get("group_id")
         author_name = request.form.get("author_name", "").strip()
         author_hint = request.form.get("author_hint")
+        session_rating_raw = request.form.get("session_rating")
+        session_start_time = request.form.get("session_start_time")
+        session_end_time = request.form.get("session_end_time")
         notes = request.form.get("notes", "").strip()
 
         # Display name fallback
@@ -266,6 +320,44 @@ def new_log():
         if not session_date or not spot_id or not group_id:
             conn.close()
             abort(400, "Missing required fields")
+        if not session_rating_raw or not session_start_time or not session_end_time:
+            conn.close()
+            abort(400, "Missing session rating or session time range.")
+
+        try:
+            selected_date = date.fromisoformat(session_date)
+        except ValueError:
+            conn.close()
+            abort(400, "Invalid session date format.")
+
+        if selected_date > date.today():
+            conn.close()
+            abort(400, "Session date cannot be in the future.")
+
+        try:
+            session_rating = float(session_rating_raw)
+        except ValueError:
+            conn.close()
+            abort(400, "Session rating must be numeric.")
+
+        if session_rating < 0.5 or session_rating > 5:
+            conn.close()
+            abort(400, "Session rating must be between 0.5 and 5.")
+
+        if (session_rating * 2) % 1 != 0:
+            conn.close()
+            abort(400, "Session rating must use 0.5 increments.")
+
+        try:
+            start_dt = parse_15_min_time(session_start_time)
+            end_dt = parse_15_min_time(session_end_time)
+        except ValueError as exc:
+            conn.close()
+            abort(400, str(exc))
+
+        if end_dt <= start_dt:
+            conn.close()
+            abort(400, "Session end time must be after session start time.")
 
         try:
             cursor = conn.execute(
@@ -276,9 +368,12 @@ def new_log():
                     group_id,
                     author_id,
                     author_name,
+                    session_rating,
+                    session_start_time,
+                    session_end_time,
                     notes
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_date,
@@ -286,6 +381,9 @@ def new_log():
                     int(group_id),
                     author_id,
                     author_name,
+                    session_rating,
+                    session_start_time,
+                    session_end_time,
                     notes,
                 )
             )
@@ -299,8 +397,6 @@ def new_log():
             raise e
         
         try:
-            selected_date = date.fromisoformat(session_date)
-
             surf_data = get_surf_day(
                 lat=spot["latitude"],
                 lon=spot["longitude"],
@@ -359,7 +455,7 @@ def new_log():
             print("Open-Meteo fetch failed:", e)
 
         conn.close()
-        return redirect(url_for("logs"))
+        return redirect(url_for("journal"))
 
     # GET request
     spots = conn.execute("SELECT id, name FROM surf_spots").fetchall()
@@ -369,9 +465,176 @@ def new_log():
     return render_template(
         "new_log.html",
         spots=spots,
-        groups=groups
+        groups=groups,
+        today_iso=date.today().isoformat()
     )
 
+
+# Endpoint to display surf logs in a journal format (grouped by year and month)
+def build_conditions_summary(conditions):
+    """
+    Build a compact weather/ocean summary for one surf log.
+    Returns None when no condition rows exist.
+    """
+    if not conditions:
+        return None
+
+    def valid_values(key):
+        return [row[key] for row in conditions if row[key] is not None]
+
+    def circular_mean_degrees(values):
+        """
+        Average compass directions correctly across 0/360 wrap-around.
+        """
+        if not values:
+            return None
+
+        sin_total = 0.0
+        cos_total = 0.0
+
+        for value in values:
+            radians = math.radians(value)
+            sin_total += math.sin(radians)
+            cos_total += math.cos(radians)
+
+        if sin_total == 0 and cos_total == 0:
+            return None
+
+        avg = math.degrees(math.atan2(sin_total, cos_total))
+        if avg < 0:
+            avg += 360
+        return round(avg, 1)
+
+    def degrees_to_cardinal(value):
+        if value is None:
+            return None
+
+        directions = [
+            "N", "NNE", "NE", "ENE",
+            "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW",
+            "W", "WNW", "NW", "NNW"
+        ]
+        index = int((value + 11.25) // 22.5) % 16
+        return directions[index]
+
+    wave_heights = valid_values("wave_height")
+    wind_speeds = valid_values("wind_speed")
+    temperatures = valid_values("temperature")
+    tide_heights = valid_values("tide_height")
+    swell_heights = valid_values("swell_height")
+    wind_gusts = valid_values("wind_gusts")
+    wind_directions = valid_values("wind_direction")
+    swell_directions = valid_values("swell_direction")
+
+    dominant_wind_direction_deg = circular_mean_degrees(wind_directions)
+    dominant_swell_direction_deg = circular_mean_degrees(swell_directions)
+
+    return {
+        "wave_height_min": round(min(wave_heights), 2) if wave_heights else None,
+        "wave_height_max": round(max(wave_heights), 2) if wave_heights else None,
+        "wind_speed_min": round(min(wind_speeds), 2) if wind_speeds else None,
+        "wind_speed_max": round(max(wind_speeds), 2) if wind_speeds else None,
+        "temperature_min": round(min(temperatures), 2) if temperatures else None,
+        "temperature_max": round(max(temperatures), 2) if temperatures else None,
+        "tide_min": round(min(tide_heights), 2) if tide_heights else None,
+        "tide_max": round(max(tide_heights), 2) if tide_heights else None,
+        "swell_height_max": round(max(swell_heights), 2) if swell_heights else None,
+        "gust_max": round(max(wind_gusts), 2) if wind_gusts else None,
+        "dominant_wind_direction_deg": dominant_wind_direction_deg,
+        "dominant_wind_direction_cardinal": degrees_to_cardinal(
+            dominant_wind_direction_deg
+        ),
+        "dominant_swell_direction_deg": dominant_swell_direction_deg,
+        "dominant_swell_direction_cardinal": degrees_to_cardinal(
+            dominant_swell_direction_deg
+        ),
+    }
+
+
+@app.route("/journal")
+def journal():
+    conn = get_db_connection()
+
+    logs = conn.execute("""
+        SELECT
+            surf_logs.id,
+            surf_logs.session_date,
+            surf_logs.notes,
+            surf_logs.author_name,
+            surf_logs.session_rating,
+            surf_logs.session_start_time,
+            surf_logs.session_end_time,
+            groups.name AS group_name,
+            surf_spots.name AS spot_name
+        FROM surf_logs
+        JOIN groups ON surf_logs.group_id = groups.id
+        JOIN surf_spots ON surf_logs.spot_id = surf_spots.id
+        ORDER BY surf_logs.session_date DESC
+    """).fetchall()
+
+    log_ids = [log["id"] for log in logs]
+    conditions_by_log = {log_id: [] for log_id in log_ids}
+
+    if log_ids:
+        placeholders = ",".join(["?"] * len(log_ids))
+        condition_rows = conn.execute(
+            f"""
+            SELECT
+                log_id,
+                observed_at,
+                wave_height,
+                wave_period,
+                wave_direction,
+                swell_height,
+                swell_period,
+                swell_direction,
+                wind_speed,
+                wind_direction,
+                wind_gusts,
+                tide_height,
+                temperature
+            FROM surf_conditions
+            WHERE log_id IN ({placeholders})
+            ORDER BY observed_at
+            """,
+            log_ids
+        ).fetchall()
+
+        for row in condition_rows:
+            conditions_by_log[row["log_id"]].append(dict(row))
+
+    conn.close()
+
+    journal_tree = {}
+
+    for log in logs:
+        session_date = datetime.fromisoformat(log["session_date"])
+        year = session_date.year
+        month_number = session_date.month
+        month_name = calendar.month_name[month_number]
+
+        if year not in journal_tree:
+            journal_tree[year] = {}
+
+        if month_number not in journal_tree[year]:
+            journal_tree[year][month_number] = {
+                "name": month_name,
+                "logs": []
+            }
+
+        log_dict = dict(log)
+        if log_dict["session_rating"] is not None:
+            log_dict["session_rating"] = float(log_dict["session_rating"])
+        log_conditions = conditions_by_log.get(log["id"], [])
+
+        journal_tree[year][month_number]["logs"].append({
+            "log": log_dict,
+            "conditions": log_conditions,
+            "summary": build_conditions_summary(log_conditions),
+        })
+
+    return render_template("journal.html", journal_tree=journal_tree)
 
 # Run the Flask app
 if __name__ == "__main__":

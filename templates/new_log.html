@@ -5,7 +5,7 @@
 
 <form method="post">
     <label for="session_date">Session date:</label>
-    <input id="session_date" type="date" name="session_date" required>
+    <input id="session_date" type="date" name="session_date" max="{{ today_iso }}" required>
     <br><br>
 
     <label for="spot_id">Spot:</label>
@@ -26,6 +26,52 @@
 
     <label for="author_name">Author:</label>
     <input id="author_name" type="text" name="author_name" placeholder="Your name (optional)">
+    <br><br>
+
+    <label for="session_rating">Review your session:</label>
+    <select id="session_rating" name="session_rating" required>
+        <option value="" selected disabled>Select rating</option>
+        {% for step in range(1, 11) %}
+            {% set value = step / 2 %}
+            <option value="{{ value }}">{{ "%.1f"|format(value) }} / 5</option>
+        {% endfor %}
+    </select>
+    <br><br>
+
+    <label>Session start time:</label>
+    <select id="session_start_hour" required>
+        <option value="" selected disabled>HH</option>
+        {% for hour in range(0, 24) %}
+            <option value="{{ '%02d'|format(hour) }}">{{ '%02d'|format(hour) }}</option>
+        {% endfor %}
+    </select>
+    :
+    <select id="session_start_minute" required>
+        <option value="" selected disabled>MM</option>
+        <option value="00">00</option>
+        <option value="15">15</option>
+        <option value="30">30</option>
+        <option value="45">45</option>
+    </select>
+    <input id="session_start_time" type="hidden" name="session_start_time">
+    <br><br>
+
+    <label>Session end time:</label>
+    <select id="session_end_hour" required>
+        <option value="" selected disabled>HH</option>
+        {% for hour in range(0, 24) %}
+            <option value="{{ '%02d'|format(hour) }}">{{ '%02d'|format(hour) }}</option>
+        {% endfor %}
+    </select>
+    :
+    <select id="session_end_minute" required>
+        <option value="" selected disabled>MM</option>
+        <option value="00">00</option>
+        <option value="15">15</option>
+        <option value="30">30</option>
+        <option value="45">45</option>
+    </select>
+    <input id="session_end_time" type="hidden" name="session_end_time">
     <br><br>
 
     <input type="hidden" name="author_hint" id="author_hint">
@@ -71,6 +117,40 @@
     const fingerprint = localStorage.getItem("author_fingerprint");
     if (hintField && fingerprint) {
         hintField.value = fingerprint;
+    }
+
+    function syncTimeField(prefix) {
+        const hour = document.getElementById(`${prefix}_hour`);
+        const minute = document.getElementById(`${prefix}_minute`);
+        const hidden = document.getElementById(`${prefix}_time`);
+        if (!hour || !minute || !hidden) {
+            return;
+        }
+
+        if (hour.value && minute.value) {
+            hidden.value = `${hour.value}:${minute.value}`;
+        } else {
+            hidden.value = "";
+        }
+    }
+
+    ["session_start", "session_end"].forEach((prefix) => {
+        const hour = document.getElementById(`${prefix}_hour`);
+        const minute = document.getElementById(`${prefix}_minute`);
+        if (hour) {
+            hour.addEventListener("change", () => syncTimeField(prefix));
+        }
+        if (minute) {
+            minute.addEventListener("change", () => syncTimeField(prefix));
+        }
+    });
+
+    const form = document.querySelector("form");
+    if (form) {
+        form.addEventListener("submit", () => {
+            syncTimeField("session_start");
+            syncTimeField("session_end");
+        });
     }
 </script>
 {% endblock %}

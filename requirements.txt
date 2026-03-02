@@ -9,9 +9,12 @@ importlib_metadata==8.7.1
 itsdangerous==2.2.0
 Jinja2==3.1.6
 MarkupSafe==3.0.3
+openmeteo-requests==1.7.2
 pluggy==1.6.0
 python-dateutil==2.9.0.post0
 requests==2.32.5
+requests-cache==1.2.1
+retry-requests==2.0.0
 six==1.17.0
 sqlite-fts4==1.0.3
 sqlite-utils==3.38

@@ -1,7 +1,64 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>SurfLog</h1>
-<p>Home page works. Track surf sessions and conditions.</p>
-<a href="/logs">View logs</a>
+<section class="home-hero">
+    <p class="home-kicker">CS50x Final Project</p>
+    <h1>SurfLog Journal</h1>
+    <p>
+        SurfLog is a shared surf journal for surf sessions in Denmark. It combines user notes
+        with hourly weather and wave data from Open-Meteo so surfers can compare forecast
+        conditions with what actually was experienced in the water.
+    </p>
+    <div class="home-actions">
+        <a class="btn-pill primary" href="/logs/new">Add New Session</a>
+        <a class="btn-pill" href="/journal">Open Journal</a>
+    </div>
+</section>
+
+<section class="home-grid">
+    <article class="home-card">
+        <h2>Objective</h2>
+        <p>
+            Build a simple and practical surf log that helps surfers learn from previous
+            sessions and improve decision-making for future forecasts, making the chase
+            a little more reliable.
+        </p>
+    </article>
+
+    <article class="home-card">
+        <h2>How To Use</h2>
+        <ol>
+            <li>Create a session in <a href="/logs/new">New Log</a>.</li>
+            <li>Write notes about what you observed in the water. See <a href="/spots">Surf Spots</a>.</li>
+            <li>Review the entry in <a href="/journal">Journal</a> with hourly marine and weather data.</li>
+        </ol>
+    </article>
+
+    <article class="home-card">
+        <h2>Current Scope</h2>
+        <p>
+            The current surf spots and workflow focus on the Danish coast. The app is
+            intentionally simple and local-first while core features are being built.
+        </p>
+    </article>
+</section>
+
+<section class="crew-section">
+    <h2>Follow our surf crew in Denmark</h2>
+    <p>
+        Keep up with local sessions, clips, and updates from our community.
+    </p>
+    <div class="instagram-embed-wrap">
+        <iframe
+            class="instagram-embed"
+            src="https://www.instagram.com/tbaycrew/embed"
+            title="Instagram profile: tbaycrew"
+            loading="lazy"
+        ></iframe>
+    </div>
+    <p class="crew-link">
+        If the embed does not load in your browser, open
+        <a href="https://www.instagram.com/tbaycrew/" target="_blank" rel="noopener noreferrer">@tbaycrew on Instagram</a>.
+    </p>
+</section>
 {% endblock %}

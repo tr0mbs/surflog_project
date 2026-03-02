@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+
+{% block sidebar %}
+<div class="journal-nav">
+    <h2 class="journal-nav-title">Archive</h2>
+    <p class="journal-nav-subtitle">Browse sessions by month</p>
+
+    {% for year, months in journal_tree.items() %}
+        <details class="journal-year" {% if loop.first %}open{% endif %}>
+            <summary>{{ year }}</summary>
+            <ul>
+                {% for month_number, month_data in months.items() %}
+                    <li>
+                        <a href="#month-{{ year }}-{{ month_number }}">
+                            <span>{{ month_data.name }}</span>
+                            <span class="month-count">{{ month_data.logs|length }}</span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </details>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="journal-hero">
+    <h1>Surf Journal</h1>
+    <p>Each entry combines field notes with a full 24-hour weather and wave timeline.</p>
+</section>
+
+{% if journal_tree %}
+    {% for year, months in journal_tree.items() %}
+        {% for month_number, month_data in months.items() %}
+            <section class="journal-month" id="month-{{ year }}-{{ month_number }}">
+                <header class="month-header">
+                    <h2>{{ month_data.name }} {{ year }}</h2>
+                    <span>{{ month_data.logs|length }} sessions</span>
+                </header>
+
+                {% for entry in month_data.logs %}
+                    <article class="journal-entry">
+                        <div class="entry-top">
+                            <div>
+                                <h3>{{ entry.log.spot_name }}</h3>
+                                <p>
+                                    {{ entry.log.group_name }}
+                                    {% if entry.log.author_name %}
+                                        · {{ entry.log.author_name }}
+                                    {% endif %}
+                                </p>
+                                <div class="entry-session-meta">
+                                    {% if entry.log.session_start_time and entry.log.session_end_time %}
+                                        <span class="entry-time-range">
+                                            {{ entry.log.session_start_time }}-{{ entry.log.session_end_time }}
+                                        </span>
+                                    {% endif %}
+                                    {% if entry.log.session_rating is not none %}
+                                        <span class="rating-badge">
+                                            <span
+                                                class="rating-stars"
+                                                style="--rating: {{ entry.log.session_rating }}"
+                                                aria-hidden="true"
+                                            ></span>
+                                            <span class="rating-value">
+                                                {{ "%.1f"|format(entry.log.session_rating) }}/5
+                                            </span>
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="entry-date">{{ entry.log.session_date }}</div>
+                        </div>
+
+                        {% if entry.log.notes %}
+                            <p class="entry-notes">{{ entry.log.notes }}</p>
+                        {% endif %}
+
+                        {% if entry.summary %}
+                            <div class="condition-summary-grid">
+                                <div class="condition-pill">
+                                    <span>Wave Height</span>
+                                    <strong>{{ entry.summary.wave_height_min|round(1) }}-{{ entry.summary.wave_height_max|round(1) }} m</strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Swell Max</span>
+                                    <strong>{{ entry.summary.swell_height_max|round(1) }} m</strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Wind Speed</span>
+                                    <strong>{{ entry.summary.wind_speed_min|round(1) }}-{{ entry.summary.wind_speed_max|round(1) }} km/h</strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Max Gust</span>
+                                    <strong>{{ entry.summary.gust_max|round(1) }} km/h</strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Temperature</span>
+                                    <strong>{{ entry.summary.temperature_min|round(1) }}-{{ entry.summary.temperature_max|round(1) }} C</strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Tide Height</span>
+                                    <strong>{{ entry.summary.tide_min|round(1) }}-{{ entry.summary.tide_max|round(1) }} m</strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Dominant Wind (From)</span>
+                                    <strong>
+                                        {{ entry.summary.dominant_wind_direction_cardinal or "n/a" }}
+                                        {% if entry.summary.dominant_wind_direction_deg is not none %}
+                                            ({{ entry.summary.dominant_wind_direction_deg|round(0)|int }} deg)
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                                <div class="condition-pill">
+                                    <span>Dominant Swell (From)</span>
+                                    <strong>
+                                        {{ entry.summary.dominant_swell_direction_cardinal or "n/a" }}
+                                        {% if entry.summary.dominant_swell_direction_deg is not none %}
+                                            ({{ entry.summary.dominant_swell_direction_deg|round(0)|int }} deg)
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        {% if entry.conditions %}
+                            <details class="hourly-details">
+                                <summary>View 24h timeline</summary>
+                                <div class="hourly-table-wrap">
+                                    <table class="hourly-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Wave (m)</th>
+                                                <th>Period (s)</th>
+                                                <th>Swell (m)</th>
+                                                <th>Wind (km/h)</th>
+                                                <th>Temp (C)</th>
+                                                <th>Tide (m)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for condition in entry.conditions %}
+                                                <tr>
+                                                    <td>{{ condition.observed_at[11:16] }}</td>
+                                                    <td>{{ condition.wave_height|round(2) }}</td>
+                                                    <td>{{ condition.wave_period|round(1) }}</td>
+                                                    <td>{{ condition.swell_height|round(2) }}</td>
+                                                    <td>{{ condition.wind_speed|round(1) }}</td>
+                                                    <td>{{ condition.temperature|round(1) }}</td>
+                                                    <td>{{ condition.tide_height|round(2) }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+
+                            <details class="chart-details">
+                                <summary>View charts and direction timeline</summary>
+                                <div class="entry-charts" data-conditions='{{ entry.conditions|tojson }}'>
+                                    <div class="chart-legend">
+                                        <span><i class="legend-line swell"></i>Swell Height(m)</span>
+                                        <span><i class="legend-line wave"></i>Wave Height(m)</span>
+                                        <span><i class="legend-line wind"></i>Wind Speed(km/h)</span>
+                                        <span><i class="legend-line gusts"></i>Wind Gusts(km/h)</span>
+                                        <span><i class="legend-line tide"></i>Tide Height(m)</span>
+                                    </div>
+                                    <div class="unified-chart-scroller">
+                                        <div class="unified-chart"></div>
+                                    </div>
+                                </div>
+                            </details>
+                        {% endif %}
+                    </article>
+                {% endfor %}
+            </section>
+        {% endfor %}
+    {% endfor %}
+{% else %}
+    <p class="empty-state">No sessions yet. Add your first surf log to start building the journal.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function numberOrNull(value) {
+    return Number.isFinite(value) ? value : null;
+}
+
+function flowTowardDegrees(fromDegrees) {
+    if (fromDegrees === null) {
+        return null;
+    }
+    return (fromDegrees + 180) % 360;
+}
+
+function formatNumber(value, scale) {
+    if (value === null) {
+        return "n/a";
+    }
+    const span = scale.max - scale.min;
+    if (span >= 20) {
+        return value.toFixed(0);
+    }
+    if (span >= 5) {
+        return value.toFixed(1);
+    }
+    return value.toFixed(2);
+}
+
+function parseSeries(conditions, key) {
+    return conditions.map((row) => {
+        const value = row[key];
+        if (value === null || value === undefined || value === "") {
+            return null;
+        }
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    });
+}
+
+function makeScale(values, floorAtZero = false) {
+    const valid = values.filter((v) => v !== null);
+    if (!valid.length) {
+        return { min: 0, max: 1 };
+    }
+
+    let min = Math.min(...valid);
+    let max = Math.max(...valid);
+
+    if (floorAtZero) {
+        min = Math.min(min, 0);
+    }
+
+    if (min === max) {
+        const delta = min === 0 ? 1 : Math.abs(min) * 0.2;
+        min -= delta;
+        max += delta;
+    } else {
+        const pad = (max - min) * 0.12;
+        min -= pad;
+        max += pad;
+    }
+
+    return { min, max };
+}
+
+function yFor(value, sectionTop, sectionHeight, scale) {
+    if (value === null) {
+        return null;
+    }
+    const ratio = (value - scale.min) / (scale.max - scale.min);
+    return sectionTop + sectionHeight - (ratio * sectionHeight);
+}
+
+function linePath(values, xForIndex, yAtIndex) {
+    let path = "";
+    let isOpen = false;
+
+    values.forEach((value, index) => {
+        const y = yAtIndex(value, index);
+        if (y === null) {
+            isOpen = false;
+            return;
+        }
+        const x = xForIndex(index);
+        if (!isOpen) {
+            path += `M ${x} ${y} `;
+            isOpen = true;
+            return;
+        }
+        path += `L ${x} ${y} `;
+    });
+
+    return path.trim();
+}
+
+function sectionTicks(scale) {
+    const mid = (scale.min + scale.max) / 2;
+    return [
+        { value: scale.max, ratio: 0 },
+        { value: mid, ratio: 0.5 },
+        { value: scale.min, ratio: 1 }
+    ];
+}
+
+function renderUnifiedChart(container, conditions) {
+    const hourly = conditions.slice(0, 24);
+    const hourCount = hourly.length;
+    if (!hourCount) {
+        return;
+    }
+
+    const labels = hourly.map((c) => c.observed_at.slice(11, 16));
+
+    const swellHeight = parseSeries(hourly, "swell_height");
+    const waveHeight = parseSeries(hourly, "wave_height");
+    const swellPeriod = parseSeries(hourly, "swell_period");
+    const wavePeriod = parseSeries(hourly, "wave_period");
+    const swellDirection = parseSeries(hourly, "swell_direction");
+    const waveDirection = parseSeries(hourly, "wave_direction");
+
+    const windSpeed = parseSeries(hourly, "wind_speed");
+    const windGusts = parseSeries(hourly, "wind_gusts");
+    const windDirection = parseSeries(hourly, "wind_direction");
+
+    const tideHeight = parseSeries(hourly, "tide_height");
+
+    const chartWidth = Math.max((hourCount - 1) * 52 + 94, 980);
+    const left = 54;
+    const right = 22;
+
+    const topAxisY = 14;
+    const waveTop = 40;
+    const waveHeightPx = 118;
+    const periodRowY = waveTop + waveHeightPx + 16;
+    const swellArrowY = periodRowY + 18;
+    const waveArrowY = swellArrowY + 15;
+
+    const windTop = waveArrowY + 28;
+    const windHeightPx = 78;
+    const windArrowY = windTop + windHeightPx + 16;
+
+    const tideTop = windArrowY + 28;
+    const tideHeightPx = 68;
+
+    const chartHeight = tideTop + tideHeightPx + 20;
+
+    const xForIndex = (i) => {
+        if (hourCount === 1) {
+            return left;
+        }
+        return left + ((chartWidth - left - right) * i / (hourCount - 1));
+    };
+
+    const waveScale = makeScale(swellHeight.concat(waveHeight), true);
+    const windScale = makeScale(windSpeed.concat(windGusts), true);
+    const tideScale = makeScale(tideHeight, false);
+
+    const waveSwellPath = linePath(
+        swellHeight,
+        xForIndex,
+        (value) => yFor(value, waveTop, waveHeightPx, waveScale)
+    );
+    const waveWavePath = linePath(
+        waveHeight,
+        xForIndex,
+        (value) => yFor(value, waveTop, waveHeightPx, waveScale)
+    );
+    const windSpeedPath = linePath(
+        windSpeed,
+        xForIndex,
+        (value) => yFor(value, windTop, windHeightPx, windScale)
+    );
+    const windGustsPath = linePath(
+        windGusts,
+        xForIndex,
+        (value) => yFor(value, windTop, windHeightPx, windScale)
+    );
+    const tidePath = linePath(
+        tideHeight,
+        xForIndex,
+        (value) => yFor(value, tideTop, tideHeightPx, tideScale)
+    );
+
+    const tideValid = tideHeight
+        .map((v, i) => ({ value: v, index: i }))
+        .filter((point) => point.value !== null);
+    const tideMinPoint = tideValid.length
+        ? tideValid.reduce((a, b) => (a.value <= b.value ? a : b))
+        : null;
+    const tideMaxPoint = tideValid.length
+        ? tideValid.reduce((a, b) => (a.value >= b.value ? a : b))
+        : null;
+
+    let svg = "";
+    svg += `<svg class="forecast-svg" width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="xMinYMin meet">`;
+    svg += `<rect x="0" y="0" width="${chartWidth}" height="${chartHeight}" fill="none"></rect>`;
+    svg += `<rect class="top-axis-band" x="${left}" y="0" width="${chartWidth - left - right}" height="${waveTop - 8}" />`;
+
+    for (let i = 0; i < hourCount; i += 1) {
+        const x = xForIndex(i);
+        svg += `<line class="grid-hour" x1="${x}" y1="${waveTop}" x2="${x}" y2="${tideTop + tideHeightPx}" />`;
+        svg += `<line class="tick-top" x1="${x}" y1="${topAxisY + 6}" x2="${x}" y2="${waveTop - 8}" />`;
+        if (i % 2 === 0 || i === hourCount - 1) {
+            svg += `<text class="axis-top-label" x="${x}" y="${topAxisY}" text-anchor="middle">${labels[i]}</text>`;
+        }
+    }
+    svg += `<line class="hover-guide" x1="${left}" y1="${waveTop}" x2="${left}" y2="${tideTop + tideHeightPx}" />`;
+
+    svg += `<line class="section-divider" x1="${left}" y1="${windTop - 14}" x2="${chartWidth - right}" y2="${windTop - 14}" />`;
+    svg += `<line class="section-divider" x1="${left}" y1="${tideTop - 14}" x2="${chartWidth - right}" y2="${tideTop - 14}" />`;
+
+    svg += `<text class="section-label" x="${left}" y="${waveTop - 10}">Wave &amp; Swell</text>`;
+    svg += `<text class="section-label" x="${left}" y="${windTop - 10}">Wind</text>`;
+    svg += `<text class="section-label" x="${left}" y="${tideTop - 10}">Tide</text>`;
+
+    sectionTicks(waveScale).forEach((tick) => {
+        const y = waveTop + (waveHeightPx * tick.ratio);
+        svg += `<line class="y-guide" x1="${left}" y1="${y}" x2="${chartWidth - right}" y2="${y}" />`;
+        svg += `<text class="y-tick-label" x="${left - 6}" y="${y + 3}" text-anchor="end">${formatNumber(tick.value, waveScale)}</text>`;
+    });
+    sectionTicks(windScale).forEach((tick) => {
+        const y = windTop + (windHeightPx * tick.ratio);
+        svg += `<line class="y-guide" x1="${left}" y1="${y}" x2="${chartWidth - right}" y2="${y}" />`;
+        svg += `<text class="y-tick-label" x="${left - 6}" y="${y + 3}" text-anchor="end">${formatNumber(tick.value, windScale)}</text>`;
+    });
+    sectionTicks(tideScale).forEach((tick) => {
+        const y = tideTop + (tideHeightPx * tick.ratio);
+        svg += `<line class="y-guide" x1="${left}" y1="${y}" x2="${chartWidth - right}" y2="${y}" />`;
+        svg += `<text class="y-tick-label" x="${left - 6}" y="${y + 3}" text-anchor="end">${formatNumber(tick.value, tideScale)}</text>`;
+    });
+
+    svg += `<path class="line-swell" d="${waveSwellPath}" />`;
+    svg += `<path class="line-wave" d="${waveWavePath}" />`;
+    svg += `<path class="line-wind" d="${windSpeedPath}" />`;
+    svg += `<path class="line-gusts" d="${windGustsPath}" />`;
+    svg += `<path class="line-tide" d="${tidePath}" />`;
+
+    for (let i = 0; i < hourCount; i += 1) {
+        const x = xForIndex(i);
+
+        const swellP = numberOrNull(swellPeriod[i]);
+        const waveP = numberOrNull(wavePeriod[i]);
+        if (swellP !== null || waveP !== null) {
+            const swellText = swellP !== null ? `${Math.round(swellP)}s` : "n/a";
+            const waveText = waveP !== null ? `${Math.round(waveP)}s` : "n/a";
+            svg += `<text class="period-text" x="${x}" y="${periodRowY}" text-anchor="middle">`;
+            svg += `<tspan class="period-swell">${swellText}</tspan>`;
+            svg += `<tspan> / </tspan>`;
+            svg += `<tspan class="period-wave">${waveText}</tspan>`;
+            svg += `</text>`;
+        }
+
+        const swellDir = numberOrNull(swellDirection[i]);
+        const waveDir = numberOrNull(waveDirection[i]);
+        const windDir = numberOrNull(windDirection[i]);
+
+        const swellToward = flowTowardDegrees(swellDir);
+        const waveToward = flowTowardDegrees(waveDir);
+        const windToward = flowTowardDegrees(windDir);
+
+        if (swellToward !== null) {
+            svg += `<g transform="rotate(${swellToward} ${x} ${swellArrowY})"><text class="dir-swell" x="${x}" y="${swellArrowY}" text-anchor="middle">↑</text></g>`;
+        }
+        if (waveToward !== null) {
+            svg += `<g transform="rotate(${waveToward} ${x} ${waveArrowY})"><text class="dir-wave" x="${x}" y="${waveArrowY}" text-anchor="middle">↑</text></g>`;
+        }
+        if (windToward !== null) {
+            svg += `<g transform="rotate(${windToward} ${x} ${windArrowY})"><text class="dir-wind" x="${x}" y="${windArrowY}" text-anchor="middle">↑</text></g>`;
+        }
+    }
+
+    if (tideMinPoint !== null) {
+        const x = xForIndex(tideMinPoint.index);
+        const y = yFor(tideMinPoint.value, tideTop, tideHeightPx, tideScale);
+        svg += `<circle class="tide-marker-low" cx="${x}" cy="${y}" r="2.6"></circle>`;
+    }
+    if (tideMaxPoint !== null) {
+        const x = xForIndex(tideMaxPoint.index);
+        const y = yFor(tideMaxPoint.value, tideTop, tideHeightPx, tideScale);
+        svg += `<circle class="tide-marker-high" cx="${x}" cy="${y}" r="2.6"></circle>`;
+    }
+
+    const segmentWidth = hourCount === 1
+        ? 40
+        : (chartWidth - left - right) / (hourCount - 1);
+    const hitTop = waveTop;
+    const hitBottom = tideTop + tideHeightPx;
+
+    for (let i = 0; i < hourCount; i += 1) {
+        const x = xForIndex(i);
+        const hitX = Math.max(left, x - (segmentWidth / 2));
+        const hitW = Math.min(segmentWidth, chartWidth - right - hitX);
+        svg += `<rect class="hour-hit" data-index="${i}" x="${hitX}" y="${hitTop}" width="${hitW}" height="${hitBottom - hitTop}" />`;
+    }
+
+    svg += `<text class="axis-note" x="${chartWidth - right}" y="${waveTop - 10}" text-anchor="end">m</text>`;
+    svg += `<text class="axis-note" x="${chartWidth - right}" y="${windTop - 10}" text-anchor="end">km/h</text>`;
+    svg += `<text class="axis-note" x="${chartWidth - right}" y="${tideTop - 10}" text-anchor="end">m</text>`;
+
+    svg += `</svg>`;
+    container.innerHTML = svg;
+
+    const scroller = container.closest(".unified-chart-scroller");
+    if (!scroller) {
+        return;
+    }
+
+    let tooltip = scroller.querySelector(".chart-tooltip");
+    if (!tooltip) {
+        tooltip = document.createElement("div");
+        tooltip.className = "chart-tooltip";
+        scroller.appendChild(tooltip);
+    }
+
+    const formatValue = (value, digits = 1) => {
+        if (value === null || value === undefined || value === "") {
+            return "n/a";
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+            return "n/a";
+        }
+        return numeric.toFixed(digits);
+    };
+
+    const hourHits = container.querySelectorAll(".hour-hit");
+    const hoverGuide = container.querySelector(".hover-guide");
+    hourHits.forEach((hit) => {
+        const index = Number(hit.dataset.index);
+        const row = hourly[index];
+        if (!row) {
+            return;
+        }
+
+        const tooltipHtml = [
+            `<strong>${row.observed_at.slice(11, 16)}</strong>`,
+            `Swell: ${formatValue(row.swell_height, 2)} m · ${formatValue(row.swell_period, 1)} s · from ${formatValue(row.swell_direction, 0)} deg`,
+            `Wave: ${formatValue(row.wave_height, 2)} m · ${formatValue(row.wave_period, 1)} s · from ${formatValue(row.wave_direction, 0)} deg`,
+            `Wind: ${formatValue(row.wind_speed, 1)} km/h · Gust ${formatValue(row.wind_gusts, 1)} · from ${formatValue(row.wind_direction, 0)} deg`,
+            `Tide: ${formatValue(row.tide_height, 2)} m`
+        ].join("<br>");
+
+        const moveTooltip = (event) => {
+            tooltip.innerHTML = tooltipHtml;
+            tooltip.classList.add("visible");
+            const rect = scroller.getBoundingClientRect();
+            const x = event.clientX - rect.left + scroller.scrollLeft;
+            const y = event.clientY - rect.top;
+
+            if (hoverGuide) {
+                const x1 = Number(hit.getAttribute("x")) + (Number(hit.getAttribute("width")) / 2);
+                hoverGuide.setAttribute("x1", x1);
+                hoverGuide.setAttribute("x2", x1);
+                hoverGuide.classList.add("visible");
+            }
+
+            const maxX = scroller.scrollWidth - 220;
+            const leftPos = Math.max(8, Math.min(maxX, x + 12));
+            const topPos = Math.max(8, y - 130);
+
+            tooltip.style.left = `${leftPos}px`;
+            tooltip.style.top = `${topPos}px`;
+        };
+
+        hit.addEventListener("mouseenter", moveTooltip);
+        hit.addEventListener("mousemove", moveTooltip);
+        hit.addEventListener("mouseleave", () => {
+            tooltip.classList.remove("visible");
+            if (hoverGuide) {
+                hoverGuide.classList.remove("visible");
+            }
+        });
+    });
+}
+
+document.querySelectorAll(".entry-charts").forEach((block) => {
+    const conditions = JSON.parse(block.dataset.conditions || "[]");
+    const target = block.querySelector(".unified-chart");
+    if (!target || !conditions.length) {
+        return;
+    }
+    renderUnifiedChart(target, conditions);
+});
+</script>
+{% endblock %}
