@@ -20,3 +20,4 @@ test_*.py
 AI_CONTEXT.md
 
 instance/.DS_Store
+.DS_Store

@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, render_template, request, redirect, url_for, abort
 import calendar
 import math
+import os
 import requests
 import sqlite3
 import uuid
@@ -12,7 +13,7 @@ import requests_cache
 from retry_requests import retry
 
 app = Flask(__name__)
-DB_PATH = "surflog.db"
+DB_PATH = os.getenv("SURFLOG_DB_PATH", "surflog.db")
 
 
 # Ensure surf_logs has the extra fields used by the UI
