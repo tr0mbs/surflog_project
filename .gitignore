@@ -19,4 +19,4 @@ test_*.py
 # AI requirements
 AI_CONTEXT.md
 
-instance/
+instance/.DS_Store
